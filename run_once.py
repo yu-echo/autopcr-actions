@@ -132,6 +132,38 @@ def summarize_result(path):
     }, None
 
 
+def tail_autopcr_log(lines=40):
+    """打印 autopcr 日志尾部，用于排查任务级错误。
+    先抹掉可能的敏感片段（手机号 / JWT / token 类键值）再输出。"""
+    import re
+    path = os.path.join(LOG_PATH, 'autopcr.log')
+    if not os.path.exists(path):
+        return []
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            tail = f.readlines()[-lines:]
+    except Exception:
+        return []
+    out = []
+    for line in tail:
+        line = re.sub(r'1[3-9]\d{9}', '1**********', line)
+        line = re.sub(r'eyJ[A-Za-z0-9_\-\.]{20,}', '<JWT>', line)
+        line = re.sub(r'(access_key|accessToken|refresh_token|refreshToken|password|passwd)'
+                      r'(["\'：:=\s]+)[^\s,;)\]}"]+', r'\1\2<REDACTED>', line, flags=re.I)
+        out.append(line.rstrip())
+    return out
+
+
+def dump_log(reason, lines=40):
+    tail = tail_autopcr_log(lines)
+    if not tail:
+        print(f'[{reason}] autopcr 日志为空或不存在')
+        return
+    print(f'[{reason}] autopcr 日志尾部（已脱敏）：')
+    for l in tail:
+        print('    | ' + l)
+
+
 async def main():
     # ---- 参数校验 ----
     missing = [k for k, v in (('AUTOPCR_QID', QID), ('BILI_USERNAME', BILI_USER),
@@ -217,9 +249,14 @@ async def main():
                 result = await mgr.do_daily()
                 status = getattr(result, 'status', 'unknown')
                 print(f'[完成] 日常执行结束，状态: {status}')
+                # 状态非成功时，把 autopcr 自己的日志捞出来（已脱敏），
+                # 否则只看得到「错误」两个字，无从排查
+                if str(status) not in ('成功', 'SUCCESS', 'success', 'SUCCESSFUL'):
+                    dump_log('诊断', 60)
             except Exception as e:
                 err = f'{type(e).__name__}: {str(e)[:300]}'
                 print(f'[失败] 日常执行异常: {err}')
+                dump_log('诊断', 60)
                 push('❌ autopcr 日常执行失败', f'执行过程中出错：\n\n{err}\n\n{env_footer()}')
                 raise
 
