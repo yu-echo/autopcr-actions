@@ -190,6 +190,23 @@ async def main():
     print(f'[执行] 开始跑日常 {now.strftime("%Y-%m-%d %H:%M:%S")}')
     print('-' * 60)
 
+    # 初始化游戏数据库。
+    # Web 面板模式下这是后台异步加载的，用户点运行时早就绪了；
+    # 一次性脚本必须显式等待，否则 do_daily 会抛
+    # ValueError: 数据库未初始化完成，请稍等片刻
+    print('[初始化] 加载游戏数据库...')
+    try:
+        from autopcr.db.dbstart import db_start
+        await db_start()
+        print('[初始化] 数据库就绪')
+    except Exception as e:
+        err = f'{type(e).__name__}: {str(e)[:200]}'
+        print(f'[失败] 数据库初始化失败: {err}')
+        push('❌ autopcr 数据库初始化失败',
+             f'无法加载游戏数据库：\n\n{err}\n\n'
+             f'常见原因：数据资源未下载成功（_download_data.py 失败）。\n\n{env_footer()}')
+        raise
+
     async with usermgr.load(QID) as acctmgr:
         async with acctmgr.load(ALIAS) as mgr:
             try:
