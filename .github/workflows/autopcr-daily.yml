@@ -21,6 +21,9 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      - name: 检出本仓库（提供 run_once.py）
+        uses: actions/checkout@v4
+
       - name: 检查凭据是否已配置
         env:
           QID: ${{ secrets.AUTOPCR_QID }}
