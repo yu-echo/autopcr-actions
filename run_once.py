@@ -209,7 +209,10 @@ async def main():
         else:
             print(f'[初始化] 角色 {ALIAS} 已存在')
 
-        # 写入/更新游戏凭据
+        # 写入/更新游戏凭据。
+        # 注意：Account 只在退出 async with 时才自动保存（见 __aexit__），
+        # 用裸 load() 改完必须显式 save_data()，否则改动会丢 ——
+        # 表现就是执行日常时 username 为空，服务端回 "userId empty"。
         acct = acctmgr.load(ALIAS)
         changed = (acct.data.username != BILI_USER
                    or acct.data.password != BILI_PASS
@@ -218,7 +221,8 @@ async def main():
         acct.data.password = BILI_PASS
         acct.data.channel = CHANNEL
         if changed:
-            print('[凭据] 已更新（内容不打印）')
+            await acct.save_data()
+            print('[凭据] 已更新并落盘（内容不打印）')
         else:
             print('[凭据] 与上次一致')
 
