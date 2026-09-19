@@ -173,6 +173,34 @@ def dump_log(reason, lines=40):
         print('    | ' + l)
 
 
+CONFIG_FILENAME = 'autopcr-config.json'
+
+
+def load_task_config():
+    """读取任务配置文件（不含凭据，可安全放进公开仓库）。
+    找不到时返回 (None, None)，此时用 autopcr 默认配置。"""
+    cands = []
+    ws = os.environ.get('GITHUB_WORKSPACE')
+    if ws:
+        cands.append(os.path.join(ws, CONFIG_FILENAME))
+    cands += [
+        os.path.join(os.getcwd(), '..', CONFIG_FILENAME),  # workflow: cwd = app/
+        os.path.join(os.getcwd(), CONFIG_FILENAME),
+        os.path.join(ROOT, CONFIG_FILENAME),
+    ]
+    for path in cands:
+        if not os.path.exists(path):
+            continue
+        try:
+            raw = json.load(open(path, encoding='utf-8'))
+        except Exception as e:
+            print(f'[配置] {path} 解析失败（已忽略）: {e}')
+            continue
+        # 去掉以 _ 开头的说明性字段
+        return {k: v for k, v in raw.items() if not k.startswith('_')}, path
+    return None, None
+
+
 async def main():
     # ---- 参数校验 ----
     missing = [k for k, v in (('AUTOPCR_QID', QID), ('BILI_USERNAME', BILI_USER),
@@ -221,10 +249,26 @@ async def main():
         acct.data.password = BILI_PASS
         acct.data.channel = CHANNEL
         if changed:
-            await acct.save_data()
-            print('[凭据] 已更新并落盘（内容不打印）')
+            print('[凭据] 已更新（内容不打印）')
         else:
             print('[凭据] 与上次一致')
+
+        # 应用仓库里的任务配置（autopcr-config.json）。
+        # 用 merge 而不是整体替换：autopcr 新版本新增的配置项能保留默认值。
+        task_cfg, cfg_path = load_task_config()
+        if task_cfg:
+            merged = dict(acct.data.config or {})
+            merged.update(task_cfg)
+            if merged != (acct.data.config or {}):
+                acct.data.config = merged
+                changed = True
+            print(f'[配置] 已应用 {len(task_cfg)} 项（{os.path.basename(cfg_path)}）')
+        else:
+            print(f'[配置] 未找到 {CONFIG_FILENAME}，使用默认配置')
+
+        if changed:
+            await acct.save_data()
+            print('[落盘] 账号数据已保存')
 
     if DRY_RUN:
         print('[DRY_RUN] 环境与账号检查通过，未执行日常')

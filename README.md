@@ -66,6 +66,46 @@
 
 ---
 
+## 修改配置（任务开关 / 策略）
+
+任务配置放在仓库根目录的 **`autopcr-config.json`** —— 里面**不含任何凭据**，
+只描述"哪些任务开、用什么策略"，所以可以公开。
+
+### 改法一：GitHub 网页直接改（最省事）
+
+1. 打开 `autopcr-config.json`
+2. 点右上角 **铅笔图标**
+3. 改完点 **Commit changes**
+4. 下次定时运行（或到 Actions 手动触发一次）即生效
+
+### 改法二：本地面板调好 → 导出
+
+本机跑 `启动面板.bat`，在面板「设置」页把任务调成想要的样子，然后导出成仓库文件：
+
+```bash
+# 在 autopcr 目录里执行（把 <qid>/<别名> 换成你的）
+python -c "import json; d=json.load(open('cache/http_server/<qid>/<别名>.json',encoding='utf-8')); json.dump(d['config'], open('../autopcr-config.json','w',encoding='utf-8'), ensure_ascii=False, indent=2)"
+```
+
+然后提交推送即可。
+
+### 配置写法
+
+```jsonc
+{
+  "_comment": "以 _ 开头的字段是说明，会被忽略",
+  "free_gacha": true,                      // true/false 开关任务
+  "ex_equip_recycle_category": ["普通铜"]   // 列表项，含义同本地面板对应选项
+}
+```
+
+**不用写全**：脚本按 **merge** 处理 —— 只写你想改的项即可，没提到的保持 autopcr 默认值
+（这样 autopcr 升级新增的配置项也不会丢）。
+
+想暂时关掉某个任务，把它改成 `false` 就行。
+
+---
+
 ## 常见问题
 
 ### 第一次运行失败，提示缺少 Secret
