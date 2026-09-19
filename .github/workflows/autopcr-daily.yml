@@ -1,0 +1,94 @@
+name: autopcr 日常
+
+on:
+  schedule:
+    # 北京时间每天 08:00（UTC 00:00）
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '仅检查环境与登录，不执行日常'
+        type: boolean
+        default: false
+
+# 只读权限：本工作流不写回仓库
+permissions:
+  contents: read
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检查凭据是否已配置
+        env:
+          QID: ${{ secrets.AUTOPCR_QID }}
+          USER: ${{ secrets.BILI_USERNAME }}
+          PASS: ${{ secrets.BILI_PASSWORD }}
+        run: |
+          miss=""
+          [ -z "$QID" ]  && miss="$miss AUTOPCR_QID"
+          [ -z "$USER" ] && miss="$miss BILI_USERNAME"
+          [ -z "$PASS" ] && miss="$miss BILI_PASSWORD"
+          if [ -n "$miss" ]; then
+            echo "::error title=尚未配置凭据::缺少 Secret:$miss"
+            echo ""
+            echo "============================================================"
+            echo "  本仓库不含任何账号凭据，需你自己配一次"
+            echo "============================================================"
+            echo ""
+            echo "缺少:$miss"
+            echo ""
+            echo "在仓库 Settings -> Secrets and variables -> Actions 添加："
+            echo ""
+            echo "  AUTOPCR_QID     面板账号，纯数字（手机号或QQ号，5~12位）"
+            echo "  BILI_USERNAME   B站账号（手机号）"
+            echo "  BILI_PASSWORD   B站密码"
+            echo "  PUSHPLUS_TOKEN  （可选）配了才推微信"
+            echo ""
+            echo "注意：B站账号密码是敏感凭据，只放进 Secret，不要写进任何文件。"
+            echo "============================================================"
+            exit 1
+          fi
+          echo "凭据已配置，继续。"
+
+      - name: 拉取 autopcr（始终用最新版）
+        run: git clone --depth 1 https://github.com/cc004/autopcr.git app
+
+      - name: 设置 Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: 安装依赖
+        working-directory: app
+        run: |
+          python -m pip install --upgrade pip -q
+          pip install -q -r requirements.txt
+          # requirements.txt 漏了 cv2（角色识别要用），必须补
+          pip install -q opencv-python-headless
+
+      - name: 下载游戏数据资源
+        working-directory: app
+        run: |
+          # 只下数据，不下前端（CI 不需要 Web 面板）
+          python _download_data.py || echo "::warning::数据下载有告警，继续执行"
+
+      - name: 执行日常
+        working-directory: app
+        env:
+          AUTOPCR_QID: ${{ secrets.AUTOPCR_QID }}
+          BILI_USERNAME: ${{ secrets.BILI_USERNAME }}
+          BILI_PASSWORD: ${{ secrets.BILI_PASSWORD }}
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+          AUTOPCR_ALIAS: ${{ vars.AUTOPCR_ALIAS || 'main' }}
+          AUTOPCR_DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: |
+          cp "$GITHUB_WORKSPACE/run_once.py" ./run_once.py
+          python run_once.py
+
+      # 说明：这里刻意不上传 result/ 与 log/ 作为 artifact。
+      # result 文件名含面板账号与角色名，log 可能含账号片段；
+      # 公开仓库的 artifact 对任何登录 GitHub 的用户可下载，不应外传。
+      # 执行明细由 run_once.py 汇总后推送到微信，控制台输出已做脱敏。
