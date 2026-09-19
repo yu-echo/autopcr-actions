@@ -114,7 +114,11 @@ def summarize_result(path):
             for k, v in res.items() if isinstance(v, dict)]
     stat = Counter(r[0] for r in rows)
 
-    interesting = [r for r in rows if r[0] in ('成功', '警告', '错误')]
+    # 保留一切「需要人看」的状态（成功 / 警告 / 错误 / 致命 …），
+    # 只把「跳过」「中止」这类正常情况排除。之前写死了三个状态名，
+    # 结果「致命」被漏掉，只显示出「致命 1」却看不到是哪一项。
+    SKIP_STATUS = ('跳过', '中止')
+    interesting = [r for r in rows if r[0] not in SKIP_STATUS]
     lines = []
     if interesting:
         for st, name, log in interesting[:20]:
@@ -132,9 +136,9 @@ def summarize_result(path):
     }, None
 
 
-def tail_autopcr_log(lines=40):
+def tail_autopcr_log(lines=800):
     """打印 autopcr 日志尾部，用于排查任务级错误。
-    先抹掉可能的敏感片段（手机号 / JWT / token 类键值）再输出。"""
+    先滤掉资源解析噪音，再抹掉敏感片段（手机号 / JWT / token 类键值）。"""
     import re
     path = os.path.join(LOG_PATH, 'autopcr.log')
     if not os.path.exists(path):
@@ -144,14 +148,19 @@ def tail_autopcr_log(lines=40):
             tail = f.readlines()[-lines:]
     except Exception:
         return []
+
+    # 资源下载/解析类日志量极大，会把真正的报错挤出可视范围
+    NOISE = ('resolving a/', 'resolving ', 'download ', 'unity3d', 'manifest')
     out = []
     for line in tail:
+        if any(n in line for n in NOISE):
+            continue
         line = re.sub(r'1[3-9]\d{9}', '1**********', line)
         line = re.sub(r'eyJ[A-Za-z0-9_\-\.]{20,}', '<JWT>', line)
         line = re.sub(r'(access_key|accessToken|refresh_token|refreshToken|password|passwd)'
                       r'(["\'：:=\s]+)[^\s,;)\]}"]+', r'\1\2<REDACTED>', line, flags=re.I)
         out.append(line.rstrip())
-    return out
+    return out[-60:]
 
 
 def dump_log(reason, lines=40):
