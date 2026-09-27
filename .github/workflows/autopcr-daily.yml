@@ -2,8 +2,9 @@ name: autopcr 日常
 
 on:
   schedule:
-    # 北京时间每天 08:00（UTC 00:00）
-    - cron: '0 0 * * *'
+    # 北京时间每天 07:00（= UTC 前一天 23:00）。
+    # GitHub 的 cron 用 UTC，换算：北京时间 = UTC + 8。
+    - cron: '0 23 * * *'
   workflow_dispatch:
     inputs:
       dry_run:

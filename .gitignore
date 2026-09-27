@@ -1,3 +1,10 @@
 __pycache__/
 *.py[cod]
 .DS_Store
+
+# 本地部署产物：运行时现拉的 autopcr 本体（几十 MB，含自己的 .git）
+# 云端 Actions 不需要它——workflow 每次自己 clone
+app/
+
+# 本地体检脚本的产出物（可由 local/dump_config.py 随时重新生成）
+_config_dump.json
